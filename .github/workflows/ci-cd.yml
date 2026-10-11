@@ -1,0 +1,148 @@
+name: CI-CD Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-test-security:
+    name: Build, Test and Security Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Build validation
+        run: python -m compileall -q app.py
+
+      - name: Run automated tests
+        run: |
+          pytest -v --junitxml=test-results.xml
+
+      - name: Security scan - Bandit
+        run: bandit -r app.py
+
+      - name: Dependency vulnerability scan
+        run: pip-audit
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: test-results.xml
+          if-no-files-found: ignore
+
+      - name: Pipeline report
+        if: always()
+        run: |
+          echo "## CI/CD Pipeline Report" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Commit: $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Branch: $GITHUB_REF_NAME" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Build, tests and scans: see job steps above" \
+            >> "$GITHUB_STEP_SUMMARY"
+
+  docker-publish:
+    name: Build and Publish Docker Image
+    needs: build-test-security
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    outputs:
+      image: ${{ steps.image.outputs.name }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set image name
+        id: image
+        run: |
+          echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" \
+            >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.image.outputs.name }}:${{ github.sha }}
+            ${{ steps.image.outputs.name }}:latest
+
+      - name: Report image
+        run: |
+          echo "## Docker Image" >> "$GITHUB_STEP_SUMMARY"
+          echo "Published: ${{ steps.image.outputs.name }}:${GITHUB_SHA}" \
+            >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    name: Deploy to Linux VPS
+    needs: docker-publish
+    runs-on: ubuntu-latest
+
+    env:
+      IMAGE_NAME: ${{ needs.docker-publish.outputs.image }}
+
+    steps:
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.VPS_SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Deploy container
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          ssh "$VPS_USER@$VPS_HOST" \
+            "docker pull '$IMAGE_NAME:$GITHUB_SHA' &&
+             (docker rm -f cicd-demo || true) &&
+             docker run -d --restart unless-stopped \
+               --name cicd-demo -p 80:5000 \
+               '$IMAGE_NAME:$GITHUB_SHA'"
+
+      - name: Deployment report
+        if: always()
+        run: |
+          echo "## Deployment" >> "$GITHUB_STEP_SUMMARY"
+          echo "Target: Linux VPS" >> "$GITHUB_STEP_SUMMARY"
+          echo "Image: $IMAGE_NAME:$GITHUB_SHA" \
+            >> "$GITHUB_STEP_SUMMARY"
