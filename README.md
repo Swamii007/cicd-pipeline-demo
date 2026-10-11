@@ -1,6 +1,11 @@
 # CI/CD Pipeline Demo (GitHub Actions)
 
+[![CI-CD Pipeline](https://github.com/Swamii007/cicd-pipeline-demo/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/Swamii007/cicd-pipeline-demo/actions/workflows/ci-cd.yml)
+[![Pipeline Report](https://img.shields.io/badge/Detailed%20Report-PIPELINE__REPORT.md-brightgreen)](PIPELINE_REPORT.md)
+
 A complete, production-grade CI/CD pipeline template with automated build validation, unit testing, security scanning, container publishing (GitHub Container Registry), and automated deployment.
+
+📖 **[Read the Full Pipeline Execution & Security Audit Report](PIPELINE_REPORT.md)**
 
 ---
 
