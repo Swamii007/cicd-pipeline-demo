@@ -29,42 +29,51 @@ The pipeline automates:
 
 ```mermaid
 flowchart TD
-    subgraph Trigger["Git Event Trigger"]
-        A[Git Push to 'main' / Pull Request]
+    subgraph Trigger["Trigger Event"]
+        A["Git Push to main or Pull Request"]
     end
 
-    subgraph Job1["Job 1: Build, Test & Security Scan (ubuntu-latest)"]
-        B1[1. Checkout Source Code] --> B2[2. Setup Python 3.12 with pip cache]
-        B2 --> B3[3. Install Dependencies from requirements.txt]
-        B3 --> B4[4. Bytecode Compilation - compileall]
-        B4 --> B5[5. Unit Tests - pytest]
-        B5 --> B6[6. SAST Security Scan - Bandit]
-        B6 --> B7[7. Supply Chain Audit - pip-audit]
-        B7 --> B8[8. Archive Test Artifact - test-results.xml]
-        B8 --> B9[9. Generate Step Summary Report]
+    subgraph Job1["Job 1: Build, Test and Security Scan"]
+        B1["1. Checkout Source Code"]
+        B2["2. Setup Python 3.12 with Cache"]
+        B3["3. Install Dependencies"]
+        B4["4. Bytecode Compilation (compileall)"]
+        B5["5. Unit Tests (pytest)"]
+        B6["6. SAST Security Scan (Bandit)"]
+        B7["7. Supply Chain Audit (pip-audit)"]
+        B8["8. Archive Test Artifacts"]
+        B9["9. Generate Step Summary"]
+
+        B1 --> B2 --> B3 --> B4 --> B5 --> B6 --> B7 --> B8 --> B9
     end
 
-    subgraph Job2["Job 2: Build & Publish Docker Image (GHCR)"]
-        C1[1. Set Dynamic Image Name] --> C2[2. Setup Docker Buildx]
-        C2 --> C3[3. Authenticate to ghcr.io]
-        C3 --> C4[4. Build Container Image]
-        C4 --> C5[5. Push image tags: SHA & latest]
-        C5 --> C6[6. Publish Image Registry Summary]
+    subgraph Job2["Job 2: Build and Publish Docker Image"]
+        C1["1. Set Image Name"]
+        C2["2. Setup Docker Buildx"]
+        C3["3. Login to GitHub Container Registry"]
+        C4["4. Build Container Image"]
+        C5["5. Push Tags (SHA and latest)"]
+        C6["6. Publish Registry Summary"]
+
+        C1 --> C2 --> C3 --> C4 --> C5 --> C6
     end
 
     subgraph Job3["Job 3: Deploy to Linux VPS"]
-        D1[1. Verify VPS Secret Configuration] --> D2{Secrets Present?}
-        D2 -- Yes --> D3[Configure SSH Key & Known Hosts]
-        D3 --> D4[Pull New Image on VPS]
-        D4 --> D5[Zero-Downtime Container Recreation]
-        D2 -- No --> D6[Safely Skip Remote Deployment with Notice]
-        D5 --> D7[Final Deployment Summary]
-        D6 --> D7
+        D1["1. Check VPS Configuration Secrets"]
+        D2{"VPS Secrets Configured?"}
+        D3["Configure SSH and Known Hosts"]
+        D4["Pull Image and Restart Container"]
+        D5["Deployment Completed"]
+        D6["Deployment Gracefully Skipped"]
+
+        D1 --> D2
+        D2 -->|Yes| D3 --> D4 --> D5
+        D2 -->|No| D6
     end
 
-    Trigger --> Job1
-    Job1 -->|On Push to main| Job2
-    Job2 --> Job3
+    A --> B1
+    B9 -->|Push to main| C1
+    C6 --> D1
 ```
 
 ---
